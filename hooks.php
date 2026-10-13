@@ -12,7 +12,7 @@ class hooks_ksf_FA_Rep_SalesGroups extends hooks
 
     function install_access()
     {
-        $security_sections[SS_KSF_FA_REP_CUSTOMER] = _('KSF Customer Reports');
+        $security_sections[SS_KSF_FA_REP_SALESGROUPS] = _('KSF Customer Reports');
         $security_types['SA_KSF_REP_SALESGROUPS'] = _('View Sales Group Reports');
         return array($security_sections, $security_types);
     }
