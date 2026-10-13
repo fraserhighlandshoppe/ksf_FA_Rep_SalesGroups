@@ -17,7 +17,7 @@ class hooks_ksf_FA_Rep_SalesGroups extends hooks
         return array($security_sections, $security_types);
     }
 
-    function activate_extension($check_only = false)
+    function activate_extension($company, $check_only = true)
     {
         $updates = array(
             'sql/install.sql' => array(),
@@ -28,7 +28,7 @@ class hooks_ksf_FA_Rep_SalesGroups extends hooks
         return $this->verify_updates($updates, $check_only);
     }
 
-    function deactivate_extension($check_only = false)
+    function deactivate_extension($company, $check_only = true)
     {
         return $this->remove_extension($check_only);
     }
