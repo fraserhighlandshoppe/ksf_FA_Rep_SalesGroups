@@ -1,0 +1,7 @@
+-- ksf_FA_Rep_SalesGroups uses native FA tables (no custom schema).
+-- Map SQL references to actual tables:
+--   sales_groups          -> native group table or custom mapping table
+--   sales_group_debtors   -> debtor-to-group link table
+--   cust_branch           -> native branch/debtor branch table
+-- Adjust column names (group_id, group_name, debtor_no, name, branch_ref)
+-- to match your actual schema.
