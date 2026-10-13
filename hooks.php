@@ -10,12 +10,12 @@ class hooks_ksf_FA_Rep_SalesGroups extends hooks
     var $module_name = 'ksf_FA_Rep_SalesGroups';
     var $version = '2.4.19-1.0.0';
 
-    function install_access()
+    /* function install_access()
     {
         $security_sections[SS_KSF_FA_REP_CUSTOMER] = _('KSF Customer Reports');
         $security_types['SA_CUSTPAYMREP'] = _('View Customer Reports');
         return array($security_sections, $security_types);
-    }
+    } */
 
     function activate_extension($company, $check_only = true)
     {
