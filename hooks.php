@@ -17,18 +17,20 @@ class hooks_ksf_FA_Rep_SalesGroups extends hooks
         return array($security_sections, $security_types);
     }
 
-    function install_extension($install = true)
+    function activate_extension($check_only = false)
     {
-        $updates = array('sql/install.sql' => array());
-        if ($install) {
+        $updates = array(
+            'sql/install.sql' => array(),
+        );
+        if (!$check_only) {
             $this->register_extension('ksf_FA_Rep_SalesGroups', $updates);
         }
-        return $this->verify_updates($updates, !$install);
+        return $this->verify_updates($updates, $check_only);
     }
 
-    function deactivate_extension($delete = true)
+    function deactivate_extension($check_only = false)
     {
-        return $this->remove_extension($delete);
+        return $this->remove_extension($check_only);
     }
 
     function getModuleConstants(&$data, $opts = array())
