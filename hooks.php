@@ -12,19 +12,25 @@ class hooks_ksf_FA_Rep_SalesGroups extends hooks
 
     function install_access()
     {
-        $security_sections[SS_KSF_FA_REP_SALESGROUPS] = _('KSF Customer Reports');
-        $security_types['SA_KSF_REP_SALESGROUPS'] = _('View Sales Group Reports');
+        $security_sections[SS_KSF_FA_REP_CUSTOMER] = _('KSF Customer Reports');
+        $security_types['SA_KSF_REPCUSTOMER'] = _('View Customer Reports');
         return array($security_sections, $security_types);
     }
 
-    function activate_extension($company, $check_only = true)
+    function activate_extension($check_only = false)
     {
-        return true;
+        $updates = array(
+            'sql/install.sql' => array(),
+        );
+        if (!$check_only) {
+            $this->register_extension('ksf_FA_Rep_SalesGroups', $updates);
+        }
+        return $this->verify_updates($updates, $check_only);
     }
 
-    function deactivate_extension($company, $check_only = true)
+    function deactivate_extension($check_only = false)
     {
-        return true;
+        return $this->remove_extension($check_only);
     }
 
     function getModuleConstants(&$data, $opts = array())
