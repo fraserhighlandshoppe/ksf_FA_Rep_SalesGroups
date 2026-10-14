@@ -28,17 +28,16 @@ class ReportSqlBuilder
      */
     public function buildV1Sql(): string
     {
-        $sql = "SELECT g.group_id, g.group_name, d.debtor_no, d.name, b.branch_code, b.branch_ref\n"
-             . "FROM " . TB_PREF . "sales_groups g\n"
-             . "LEFT JOIN " . TB_PREF . "sales_group_debtors sgd ON sgd.group_id = g.group_id\n"
-             . "LEFT JOIN " . TB_PREF . "debtors_master d ON d.debtor_no = sgd.debtor_no\n"
-             . "LEFT JOIN " . TB_PREF . "cust_branch b ON b.debtor_no = d.debtor_no\n"
+        $sql = "SELECT g.id AS group_id, g.description AS group_name, d.debtor_no, d.name, b.branch_ref\n"
+             . "FROM " . TB_PREF . "groups g\n"
+             . "LEFT JOIN " . TB_PREF . "cust_branches b ON b.group_no = g.id\n"
+             . "LEFT JOIN " . TB_PREF . "debtors_master d ON d.debtor_no = b.debtor_no\n"
              . "WHERE 1=1";
 
         if ($this->groupFilter && $this->groupFilter !== ALL_TEXT) {
-            $sql .= " AND g.group_id = " . db_escape($this->groupFilter);
+            $sql .= " AND g.id = " . db_escape($this->groupFilter);
         }
-        $sql .= " ORDER BY g.group_name, d.name, b.branch_ref";
+        $sql .= " ORDER BY g.description, d.name, b.branch_ref";
         return $sql;
     }
 
@@ -47,20 +46,19 @@ class ReportSqlBuilder
      */
     public function buildV2Sql(): string
     {
-        $sql = "SELECT d.debtor_no, d.name AS customer_name, b.branch_code, b.branch_ref, g.group_name\n"
+        $sql = "SELECT d.debtor_no, d.name AS customer_name, b.branch_ref, g.description AS group_name\n"
              . "FROM " . TB_PREF . "debtors_master d\n"
-             . "LEFT JOIN " . TB_PREF . "cust_branch b ON b.debtor_no = d.debtor_no\n"
-             . "LEFT JOIN " . TB_PREF . "sales_group_debtors sgd ON sgd.debtor_no = d.debtor_no\n"
-             . "LEFT JOIN " . TB_PREF . "sales_groups g ON g.group_id = sgd.group_id\n"
+             . "LEFT JOIN " . TB_PREF . "cust_branches b ON b.debtor_no = d.debtor_no\n"
+             . "LEFT JOIN " . TB_PREF . "groups g ON g.id = b.group_no\n"
              . "WHERE 1=1";
 
         if ($this->customerFilter && $this->customerFilter !== ALL_TEXT) {
             $sql .= " AND d.debtor_no = " . db_escape($this->customerFilter);
         }
         if ($this->groupFilter && $this->groupFilter !== ALL_TEXT) {
-            $sql .= " AND g.group_id = " . db_escape($this->groupFilter);
+            $sql .= " AND g.id = " . db_escape($this->groupFilter);
         }
-        $sql .= " ORDER BY d.name, g.group_name, b.branch_ref";
+        $sql .= " ORDER BY d.name, g.description, b.branch_ref";
         return $sql;
     }
 
