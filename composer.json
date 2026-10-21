@@ -1,0 +1,37 @@
+{
+    "name": "ksfraser/ksf-fa-rep-salesgroups",
+    "description": "FrontAccounting module - Sales Group reports (by group and by customer) with branch contact details",
+    "type": "frontaccounting-module",
+    "license": "GPL-2.0-or-later",
+    "authors": [
+        {
+            "name": "Kevin Fraser",
+            "email": "kevin@ksfraser.com"
+        }
+    ],
+    "require": {
+        "php": ">=7.3"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.6",
+        "ksfraser/famock": "^0.10"
+    },
+    "autoload": {
+        "psr-4": {
+            "ksfraser\\FrontAccounting\\RepSalesGroups\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "ksfraser\\FrontAccounting\\RepSalesGroups\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "platform": {
+            "php": "7.3.0"
+        }
+    },
+    "scripts": {
+        "test": "phpunit"
+    }
+}

@@ -30,55 +30,26 @@ if ($destination) {
 }
 
 require_once('src/ReportSqlBuilder.php');
+require_once('src/ReportPresenter.php');
+require_once('src/ReportLayout.php');
 use ksfraser\FrontAccounting\RepSalesGroups\ReportSqlBuilder;
-
-/**
- * Order contact types the way they are used: general, delivery, invoice,
- * order, then anything else alphabetically.
- */
-function sales_group_contact_type_order($a, $b)
-{
-    $order = array('general' => 0, 'delivery' => 1, 'invoice' => 2, 'order' => 3);
-    $pa = isset($order[strtolower($a)]) ? $order[strtolower($a)] : 99;
-    $pb = isset($order[strtolower($b)]) ? $order[strtolower($b)] : 99;
-    if ($pa === $pb) {
-        return strcmp($a, $b);
-    }
-    return ($pa < $pb) ? -1 : 1;
-}
+use ksfraser\FrontAccounting\RepSalesGroups\ReportPresenter;
+use ksfraser\FrontAccounting\RepSalesGroups\ReportLayout;
 
 $builder = new ReportSqlBuilder(2, $group_filter !== '' ? $group_filter : null,
     $customer_filter !== '' ? $customer_filter : null,
     $contact_action !== '' ? $contact_action : null);
 $sql = $builder->buildV2Sql();
 
-// Column layout: Branch | Sales Group | <whatever contact columns exist>
 $contact_columns = $builder->contactColumns();
-$headers = array(_('Branch'), _('Sales Group'));
-$aligns = array('left', 'left');
-$cols = array(0);
-$x = 0;
-foreach (array(75, 90) as $w) {
-    $x += $w;
-    $cols[] = $x;
-}
-foreach ($contact_columns as $col) {
-    $headers[] = $col[0];
-    $aligns[] = 'left';
-    $x += ($col[0] === 'Type') ? 70 : 100;
-    $cols[] = $x;
-}
-$last_col = count($cols) - 1;
-
-// Column index of the Type cell, whose content is the list of contact types.
-$type_index = null;
-foreach ($contact_columns as $i => $col) {
-    if ($col[1] === 'contact_type') {
-        $type_index = $i + 2;
-    }
-}
-
+$layout = new ReportLayout($contact_columns);
+$cols = $layout->cols();
+$headers = $layout->headers();
+$aligns = $layout->aligns();
+$last_col = $layout->lastCol();
+$type_index = $layout->typeIndex();
 $orientation = 'P';
+
 $rep = new FrontReport(_('Sales Group by Customer'), "SalesGroupsDetail", user_pagesize(), 9, $orientation);
 $rep->Font();
 
@@ -98,54 +69,18 @@ if ($result === false) {
     exit;
 }
 
-// Bucket the rows by customer, then by branch + person, so a contact that
-// is associated with the branch for several actions is listed once with all
-// of its types.
-$customers = array();
-$customer_order = array();
-$contact_count = 0;
+$rows = array();
 while ($row = db_fetch($result)) {
-    $cname = $row['customer_name'] !== null ? $row['customer_name'] : _('(no customer)');
-    if (!isset($customers[$cname])) {
-        $customers[$cname] = array();
-        $customer_order[] = $cname;
-    }
-    $branch = $row['branch_ref'] !== null && $row['branch_ref'] !== ''
-        ? $row['branch_ref'] : ($row['br_name'] !== null ? $row['br_name'] : '');
-    $person = isset($row['contact_person_id']) ? (string) $row['contact_person_id'] : '';
-    $key = $branch . "\x00" . $person;
-
-    if (!isset($customers[$cname][$key])) {
-        $customers[$cname][$key] = array(
-            'branch' => $branch,
-            'group' => $row['group_name'] !== null ? $row['group_name'] : '',
-            'types' => array(),
-        );
-        foreach ($contact_columns as $col) {
-            $customers[$cname][$key][$col[1]] = isset($row[$col[1]]) ? $row[$col[1]] : null;
-        }
-        $contact_count++;
-    }
-    $type = isset($row['contact_type']) ? $row['contact_type'] : null;
-    if ($type !== null && $type !== '') {
-        $type = ucfirst($type); // general -> General
-    }
-    if ($type !== null && $type !== '' && !in_array($type, $customers[$cname][$key]['types'], true)) {
-        $customers[$cname][$key]['types'][] = $type;
-    }
+    $rows[] = $row;
 }
 
-// How many entries actually carry contact details.
+$sections = ReportPresenter::byCustomer($rows, $contact_columns);
+
+$contact_count = 0;
 $with_contact = 0;
-foreach ($customer_order as $cname) {
-    foreach ($customers[$cname] as $entry) {
-        foreach ($contact_columns as $col) {
-            if (!empty($entry[$col[1]])) {
-                $with_contact++;
-                break;
-            }
-        }
-    }
+foreach ($sections as $section) {
+    $contact_count += count($section['rows']);
+    $with_contact += ReportPresenter::countWithContact($section['rows'], $contact_columns);
 }
 
 $cust_name = ($customer_filter !== '' && $customer_filter !== '0')
@@ -158,7 +93,7 @@ $params = array(
     1 => array('text' => _('Customer'), 'from' => $cust_name, 'to' => ''),
     2 => array('text' => _('Sales Group'), 'from' => $group_name, 'to' => ''),
     3 => array('text' => _('Contact Action'), 'from' => $contact_action !== '' ? $contact_action : _('All'), 'to' => ''),
-    4 => array('text' => _('Customers'), 'from' => (string) count($customer_order), 'to' => ''),
+    4 => array('text' => _('Customers'), 'from' => (string) count($sections), 'to' => ''),
     5 => array('text' => _('Contacts'), 'from' => (string) $contact_count, 'to' => ''),
     6 => array('text' => _('With Contact'), 'from' => (string) $with_contact, 'to' => ''),
 );
@@ -166,18 +101,18 @@ $params = array(
 $rep->Info($params, $cols, $headers, $aligns);
 $rep->NewPage();
 
-if (count($customer_order) == 0) {
+if (count($sections) == 0) {
     $rep->NewLine();
     $rep->Font('bold');
     $rep->TextCol(0, $last_col, '--NO CUSTOMERS TO DISPLAY--');
     $rep->Font();
     $rep->NewLine();
 } else {
-    foreach ($customer_order as $cname) {
+    foreach ($sections as $section) {
         // Section title: the customer (company) name
         $rep->NewLine(2);
         $rep->Font('bold');
-        $rep->TextCol(0, $last_col, $cname);
+        $rep->TextCol(0, $last_col, $section['title']);
         $rep->Font();
         $rep->NewLine();
 
@@ -189,7 +124,7 @@ if (count($customer_order) == 0) {
         $rep->Font();
         $rep->NewLine();
 
-        foreach ($customers[$cname] as $entry) {
+        foreach ($section['rows'] as $entry) {
             $rep->NewLine();
             $rep->TextCol(0, 1, $entry['branch']);
             $rep->TextCol(1, 2, $entry['group']);
@@ -197,22 +132,19 @@ if (count($customer_order) == 0) {
             // Every other contact column, leaving the Type cell to the end:
             // a multi line cell moves the row on, so it has to be drawn last.
             $types = $entry['types'];
-            usort($types, 'sales_group_contact_type_order');
-            $type_text = implode("\n", $types);
-            for ($i = 0; $i < count($contact_columns); $i++) {
-                $alias = $contact_columns[$i][1];
-                if ($alias === 'contact_type') {
+            foreach ($contact_columns as $i => $column) {
+                if ($column['alias'] === 'contact_type') {
                     continue;
                 }
-                $value = isset($entry[$alias]) ? $entry[$alias] : null;
-                $rep->TextCol($i + 2, $i + 3, $value !== null ? $value : '');
+                $value = isset($entry['values'][$column['alias']]) ? $entry['values'][$column['alias']] : '';
+                $rep->TextCol($i + 2, $i + 3, $value);
             }
-            if ($type_index !== null && $type_text !== '') {
+            if ($type_index !== null && count($types) > 0) {
                 if ($destination) {
                     // The Excel report class ignores multi line cells.
                     $rep->TextCol($type_index, $type_index + 1, implode(', ', $types));
                 } else {
-                    $rep->TextColLines($type_index, $type_index + 1, $type_text);
+                    $rep->TextColLines($type_index, $type_index + 1, implode("\n", $types));
                 }
             }
             $rep->NewLine(0, 1);

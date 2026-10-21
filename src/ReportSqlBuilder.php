@@ -58,28 +58,29 @@ class ReportSqlBuilder
     }
 
     /**
-     * Contact detail columns available for display, as [label, sql alias].
+     * Contact detail columns available for display, as
+     * [label, sql alias, source column]. The source column is null when the
+     * details come from the CRM tables.
      */
     public function contactColumns(): array
     {
         switch ($this->contactMode()) {
             case self::CONTACT_CRM:
                 return array(
-                    array('Contact', 'contact_name'),
-                    array('Type', 'contact_type'),
-                    array('Phone', 'contact_phone'),
-                    array('Email', 'contact_email'),
+                    array('label' => 'Contact', 'alias' => 'contact_name', 'column' => null),
+                    array('label' => 'Type', 'alias' => 'contact_type', 'column' => null),
+                    array('label' => 'Phone', 'alias' => 'contact_phone', 'column' => null),
+                    array('label' => 'Email', 'alias' => 'contact_email', 'column' => null),
                 );
             case self::CONTACT_BRANCH:
                 $cols = self::tableColumns('cust_branch');
                 $out = array();
                 foreach (array('contact' => 'Contact', 'phone' => 'Phone', 'fax' => 'Fax', 'email' => 'Email') as $key => $label) {
-                    foreach ($cols as $col) {
-                        if (stripos($col, $key) !== false) {
-                            $out[] = array($label, 'contact_' . $key);
-                            break;
-                        }
+                    $actual = self::findColumn($cols, $key);
+                    if ($actual === null) {
+                        continue;
                     }
+                    $out[] = array('label' => $label, 'alias' => 'contact_' . $key, 'column' => $actual);
                 }
                 return $out;
             default:
@@ -119,15 +120,29 @@ class ReportSqlBuilder
         return $cols;
     }
 
+    /**
+     * The first column whose name contains the given key, or null.
+     *
+     * @param string[] $cols
+     */
+    private static function findColumn(array $cols, string $key): ?string
+    {
+        foreach ($cols as $col) {
+            if (stripos($col, $key) !== false) {
+                return $col;
+            }
+        }
+        return null;
+    }
+
     private static function detectContactMode(): string
     {
         if (self::tableExists('crm_contacts') && self::tableExists('crm_persons')) {
             return self::CONTACT_CRM;
         }
         $cols = self::tableColumns('cust_branch');
-        foreach ($cols as $col) {
-            if (stripos($col, 'contact') !== false || stripos($col, 'phone') !== false
-                || stripos($col, 'email') !== false) {
+        foreach (array('contact', 'phone', 'email') as $key) {
+            if (self::findColumn($cols, $key) !== null) {
                 return self::CONTACT_BRANCH;
             }
         }
@@ -164,20 +179,9 @@ class ReportSqlBuilder
             case self::CONTACT_BRANCH:
                 $select = '';
                 $joins = '';
-                foreach ($this->contactColumns() as $col) {
-                    list($label, $alias) = $col;
-                    $key = substr($alias, strlen('contact_'));
-                    $actual = null;
-                    foreach (self::tableColumns('cust_branch') as $c) {
-                        if (stripos($c, $key) !== false) {
-                            $actual = $c;
-                            break;
-                        }
-                    }
-                    if ($actual === null) {
-                        continue;
-                    }
-                    $select .= ($select === '' ? '' : ",\n") . "b." . $actual . " AS " . $alias;
+                foreach ($this->contactColumns() as $column) {
+                    $select .= ($select === '' ? '' : ",\n")
+                        . "b." . $column['column'] . " AS " . $column['alias'];
                 }
                 return array($select, $joins);
 

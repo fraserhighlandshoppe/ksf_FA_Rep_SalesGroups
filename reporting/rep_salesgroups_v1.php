@@ -27,7 +27,9 @@ if ($destination) {
 }
 
 require_once('src/ReportSqlBuilder.php');
+require_once('src/ReportPresenter.php');
 use ksfraser\FrontAccounting\RepSalesGroups\ReportSqlBuilder;
+use ksfraser\FrontAccounting\RepSalesGroups\ReportPresenter;
 
 $builder = new ReportSqlBuilder(1, $group_filter !== '' ? $group_filter : null);
 $sql = $builder->buildV1Sql();
@@ -55,27 +57,12 @@ if ($result === false) {
     exit;
 }
 
-// Bucket the rows by sales group, keeping the order the query returned.
-$groups = array();
-$group_order = array();
+$rows = array();
 while ($row = db_fetch($result)) {
-    $gname = $row['group_name'] !== null ? $row['group_name'] : _('(no group)');
-    if (!isset($groups[$gname])) {
-        $groups[$gname] = array();
-        $group_order[] = $gname;
-    }
-    if (!empty($row['debtor_no'])) {
-        $groups[$gname][] = $row;
-    }
+    $rows[] = $row;
 }
 
-// Groups with no customers are kept only when the filter asks for them.
-$shown = array();
-foreach ($group_order as $gname) {
-    if (count($groups[$gname]) > 0 || $show_empty) {
-        $shown[] = $gname;
-    }
-}
+$sections = ReportPresenter::byGroup($rows, $show_empty !== '0');
 
 $group_name = ($group_filter !== '' && $group_filter !== '0')
     ? get_sales_group_name($group_filter) : _('All');
@@ -83,7 +70,7 @@ $group_name = ($group_filter !== '' && $group_filter !== '0')
 $params = array(
     0 => $comments,
     1 => array('text' => _('Sales Group'), 'from' => $group_name, 'to' => ''),
-    2 => array('text' => _('Groups'), 'from' => (string) count($shown), 'to' => ''),
+    2 => array('text' => _('Groups'), 'from' => (string) count($sections), 'to' => ''),
 );
 
 $rep = new FrontReport(_('Sales Groups by Group'), "SalesGroupsBranches", user_pagesize(), 9, $orientation);
@@ -91,18 +78,18 @@ $rep->Font();
 $rep->Info($params, $cols, $headers, $aligns);
 $rep->NewPage();
 
-if (count($shown) == 0) {
+if (count($sections) == 0) {
     $rep->NewLine();
     $rep->Font('bold');
     $rep->TextCol(0, 3, '--NO GROUPS ASSIGNED TO CUSTOMERS--');
     $rep->Font();
     $rep->NewLine();
 } else {
-    foreach ($shown as $gname) {
+    foreach ($sections as $section) {
         // Section title: the sales group name
         $rep->NewLine(2);
         $rep->Font('bold');
-        $rep->TextCol(0, 3, $gname);
+        $rep->TextCol(0, 3, $section['title']);
         $rep->Font();
         $rep->NewLine();
 
@@ -113,17 +100,17 @@ if (count($shown) == 0) {
         $rep->Font();
         $rep->NewLine();
 
-        if (count($groups[$gname]) == 0) {
+        if (count($section['rows']) == 0) {
             $rep->NewLine();
             $rep->TextCol(1, 3, '--NO CUSTOMERS IN THIS GROUP--');
             $rep->NewLine(0, 1);
             continue;
         }
 
-        foreach ($groups[$gname] as $row) {
+        foreach ($section['rows'] as $entry) {
             $rep->NewLine();
-            $rep->TextCol(1, 2, $row['name'] !== null ? $row['name'] : '');
-            $rep->TextCol(2, 3, $row['branch_ref'] !== null ? $row['branch_ref'] : '');
+            $rep->TextCol(1, 2, $entry['debtor']);
+            $rep->TextCol(2, 3, $entry['branch']);
             $rep->NewLine(0, 1);
         }
     }
