@@ -32,6 +32,21 @@ if ($destination) {
 require_once('src/ReportSqlBuilder.php');
 use Ksfraser\Frontaccounting\SalesGroups\ReportSqlBuilder;
 
+/**
+ * Order contact types the way they are used: general, delivery, invoice,
+ * order, then anything else alphabetically.
+ */
+function sales_group_contact_type_order($a, $b)
+{
+    $order = array('general' => 0, 'delivery' => 1, 'invoice' => 2, 'order' => 3);
+    $pa = isset($order[strtolower($a)]) ? $order[strtolower($a)] : 99;
+    $pb = isset($order[strtolower($b)]) ? $order[strtolower($b)] : 99;
+    if ($pa === $pb) {
+        return strcmp($a, $b);
+    }
+    return ($pa < $pb) ? -1 : 1;
+}
+
 $builder = new ReportSqlBuilder(2, $group_filter !== '' ? $group_filter : null,
     $customer_filter !== '' ? $customer_filter : null,
     $contact_action !== '' ? $contact_action : null);
@@ -54,6 +69,14 @@ foreach ($contact_columns as $col) {
     $cols[] = $x;
 }
 $last_col = count($cols) - 1;
+
+// Column index of the Type cell, whose content is the list of contact types.
+$type_index = null;
+foreach ($contact_columns as $i => $col) {
+    if ($col[1] === 'contact_type') {
+        $type_index = $i + 2;
+    }
+}
 
 $orientation = 'P';
 $rep = new FrontReport(_('Sales Group by Customer'), "SalesGroupsDetail", user_pagesize(), 9, $orientation);
@@ -170,15 +193,27 @@ if (count($customer_order) == 0) {
             $rep->NewLine();
             $rep->TextCol(0, 1, $entry['branch']);
             $rep->TextCol(1, 2, $entry['group']);
+
+            // Every other contact column, leaving the Type cell to the end:
+            // a multi line cell moves the row on, so it has to be drawn last.
+            $types = $entry['types'];
+            usort($types, 'sales_group_contact_type_order');
+            $type_text = implode("\n", $types);
             for ($i = 0; $i < count($contact_columns); $i++) {
                 $alias = $contact_columns[$i][1];
                 if ($alias === 'contact_type') {
-                    // All the types this person is associated with for the branch
-                    $value = implode(', ', $entry['types']);
-                } else {
-                    $value = isset($entry[$alias]) ? $entry[$alias] : null;
+                    continue;
                 }
+                $value = isset($entry[$alias]) ? $entry[$alias] : null;
                 $rep->TextCol($i + 2, $i + 3, $value !== null ? $value : '');
+            }
+            if ($type_index !== null && $type_text !== '') {
+                if ($destination) {
+                    // The Excel report class ignores multi line cells.
+                    $rep->TextCol($type_index, $type_index + 1, implode(', ', $types));
+                } else {
+                    $rep->TextColLines($type_index, $type_index + 1, $type_text);
+                }
             }
             $rep->NewLine(0, 1);
         }
