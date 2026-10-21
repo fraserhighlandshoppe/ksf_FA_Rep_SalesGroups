@@ -1,37 +1,188 @@
 <?php
 /*
- * ksf_FA_Rep_SalesGroups — Version 2 Report
- * 3-column table: Customer | Branch | Group
- * Filters: Group (DDL) + Customer (DDL, default ALL)
+ * ksf_FA_Rep_SalesGroups — Report 2 "Sales Group by Customer"
+ * One table per customer (company): the customer name is the section title
+ * and the table below it lists the branches with their sales group and every
+ * contact associated with the branch.
+ * REP_ID: _salesgroups_v2
+ * PARAM_0: Customer (CUSTOMERS_NO_FILTER)
+ * PARAM_1: Sales Group (SALES_GROUPS)
+ * PARAM_2: Contact Action (CONTACT_ACTIONS)
+ * PARAM_3: Comments (TEXTBOX)
+ * PARAM_4: Destination (DESTINATION)
  */
+
+$page_security = 'SA_CUSTBULKREP';
 $path_to_root = "..";
+
 include_once($path_to_root . "/includes/session.inc");
-include_once($path_to_root . "/includes/ui.inc");
 
-page_header(_('Sales Group Report — Full Detail'), '', false);
+$customer_filter = isset($_POST['PARAM_0']) ? $_POST['PARAM_0'] : '';
+$group_filter = isset($_POST['PARAM_1']) ? $_POST['PARAM_1'] : '';
+$contact_action = isset($_POST['PARAM_2']) ? $_POST['PARAM_2'] : '';
+$comments = isset($_POST['PARAM_3']) ? $_POST['PARAM_3'] : '';
+$destination = isset($_POST['PARAM_4']) ? $_POST['PARAM_4'] : '';
 
-$group_filter = isset($_POST['group_filter']) ? $_POST['group_filter'] : ALL_TEXT;
-$customer_filter = isset($_POST['customer_filter']) ? $_POST['customer_filter'] : ALL_TEXT;
+if ($destination) {
+    include_once($path_to_root . "/reporting/includes/excel_report.inc");
+} else {
+    include_once($path_to_root . "/reporting/includes/pdf_report.inc");
+}
 
 require_once('src/ReportSqlBuilder.php');
 use Ksfraser\Frontaccounting\SalesGroups\ReportSqlBuilder;
 
-$builder = new ReportSqlBuilder(2, $group_filter, $customer_filter);
+$builder = new ReportSqlBuilder(2, $group_filter !== '' ? $group_filter : null,
+    $customer_filter !== '' ? $customer_filter : null,
+    $contact_action !== '' ? $contact_action : null);
 $sql = $builder->buildV2Sql();
 
-start_table();
-echo "<h3>" . _('Sales Group — Version 2 (Customer Detail)') . "</h3>";
-echo "<table border='1' cellpadding='2' cellspacing='0'>";
-echo "<tr><th>" . _('Customer') . "</th><th>" . _('Branch') . "</th><th>" . _('Sales Group') . "</th></tr>";
-
-$result = db_query($sql, "No data returned");
-while ($row = db_fetch($result)) {
-    echo "<tr>"
-       . "<td>" . $row['customer_name'] . "</td>"
-       . "<td>" . $row['branch_ref'] . "</td>"
-       . "<td>" . $row['group_name'] . "</td>"
-       . "</tr>";
+// Column layout: Branch | Sales Group | <whatever contact columns exist>
+$contact_columns = $builder->contactColumns();
+$headers = array(_('Branch'), _('Sales Group'));
+$aligns = array('left', 'left');
+$cols = array(0);
+$x = 0;
+foreach (array(75, 90) as $w) {
+    $x += $w;
+    $cols[] = $x;
 }
-echo "</table>";
-end_table();
-end_page();
+foreach ($contact_columns as $col) {
+    $headers[] = $col[0];
+    $aligns[] = 'left';
+    $x += ($col[0] === 'Type') ? 70 : 100;
+    $cols[] = $x;
+}
+$last_col = count($cols) - 1;
+
+$orientation = 'P';
+$rep = new FrontReport(_('Sales Group by Customer'), "SalesGroupsDetail", user_pagesize(), 9, $orientation);
+$rep->Font();
+
+// A failed query would otherwise take the whole report page down with it.
+$result = @db_query($sql);
+if ($result === false) {
+    $rep->Info(array(), $cols, $headers, $aligns);
+    $rep->NewPage();
+    $rep->NewLine();
+    $rep->Font('bold');
+    $rep->TextCol(0, $last_col, '--QUERY FAILED--');
+    $rep->Font();
+    $rep->NewLine();
+    $rep->NewLine();
+    $rep->TextCol(0, $last_col, $sql);
+    $rep->End();
+    exit;
+}
+
+// Bucket the rows by customer, then by branch + person, so a contact that
+// is associated with the branch for several actions is listed once with all
+// of its types.
+$customers = array();
+$customer_order = array();
+$contact_count = 0;
+while ($row = db_fetch($result)) {
+    $cname = $row['customer_name'] !== null ? $row['customer_name'] : _('(no customer)');
+    if (!isset($customers[$cname])) {
+        $customers[$cname] = array();
+        $customer_order[] = $cname;
+    }
+    $branch = $row['branch_ref'] !== null && $row['branch_ref'] !== ''
+        ? $row['branch_ref'] : ($row['br_name'] !== null ? $row['br_name'] : '');
+    $person = isset($row['contact_person_id']) ? (string) $row['contact_person_id'] : '';
+    $key = $branch . "\x00" . $person;
+
+    if (!isset($customers[$cname][$key])) {
+        $customers[$cname][$key] = array(
+            'branch' => $branch,
+            'group' => $row['group_name'] !== null ? $row['group_name'] : '',
+            'types' => array(),
+        );
+        foreach ($contact_columns as $col) {
+            $customers[$cname][$key][$col[1]] = isset($row[$col[1]]) ? $row[$col[1]] : null;
+        }
+        $contact_count++;
+    }
+    $type = isset($row['contact_type']) ? $row['contact_type'] : null;
+    if ($type !== null && $type !== '') {
+        $type = ucfirst($type); // general -> General
+    }
+    if ($type !== null && $type !== '' && !in_array($type, $customers[$cname][$key]['types'], true)) {
+        $customers[$cname][$key]['types'][] = $type;
+    }
+}
+
+// How many entries actually carry contact details.
+$with_contact = 0;
+foreach ($customer_order as $cname) {
+    foreach ($customers[$cname] as $entry) {
+        foreach ($contact_columns as $col) {
+            if (!empty($entry[$col[1]])) {
+                $with_contact++;
+                break;
+            }
+        }
+    }
+}
+
+$cust_name = ($customer_filter !== '' && $customer_filter !== '0')
+    ? get_customer_name($customer_filter) : _('All');
+$group_name = ($group_filter !== '' && $group_filter !== '0')
+    ? get_sales_group_name($group_filter) : _('All');
+
+$params = array(
+    0 => $comments,
+    1 => array('text' => _('Customer'), 'from' => $cust_name, 'to' => ''),
+    2 => array('text' => _('Sales Group'), 'from' => $group_name, 'to' => ''),
+    3 => array('text' => _('Contact Action'), 'from' => $contact_action !== '' ? $contact_action : _('All'), 'to' => ''),
+    4 => array('text' => _('Customers'), 'from' => (string) count($customer_order), 'to' => ''),
+    5 => array('text' => _('Contacts'), 'from' => (string) $contact_count, 'to' => ''),
+    6 => array('text' => _('With Contact'), 'from' => (string) $with_contact, 'to' => ''),
+);
+
+$rep->Info($params, $cols, $headers, $aligns);
+$rep->NewPage();
+
+if (count($customer_order) == 0) {
+    $rep->NewLine();
+    $rep->Font('bold');
+    $rep->TextCol(0, $last_col, '--NO CUSTOMERS TO DISPLAY--');
+    $rep->Font();
+    $rep->NewLine();
+} else {
+    foreach ($customer_order as $cname) {
+        // Section title: the customer (company) name
+        $rep->NewLine(2);
+        $rep->Font('bold');
+        $rep->TextCol(0, $last_col, $cname);
+        $rep->Font();
+        $rep->NewLine();
+
+        // Column headings for the table under this customer
+        $rep->Font('italic');
+        for ($i = 0; $i < count($headers); $i++) {
+            $rep->TextCol($i, $i + 1, $headers[$i]);
+        }
+        $rep->Font();
+        $rep->NewLine();
+
+        foreach ($customers[$cname] as $entry) {
+            $rep->NewLine();
+            $rep->TextCol(0, 1, $entry['branch']);
+            $rep->TextCol(1, 2, $entry['group']);
+            for ($i = 0; $i < count($contact_columns); $i++) {
+                $alias = $contact_columns[$i][1];
+                if ($alias === 'contact_type') {
+                    // All the types this person is associated with for the branch
+                    $value = implode(', ', $entry['types']);
+                } else {
+                    $value = isset($entry[$alias]) ? $entry[$alias] : null;
+                }
+                $rep->TextCol($i + 2, $i + 3, $value !== null ? $value : '');
+            }
+            $rep->NewLine(0, 1);
+        }
+    }
+}
+
+$rep->End();
