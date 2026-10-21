@@ -30,7 +30,7 @@ if ($destination) {
 }
 
 require_once('src/ReportSqlBuilder.php');
-use Ksfraser\Frontaccounting\SalesGroups\ReportSqlBuilder;
+use ksfraser\FrontAccounting\RepSalesGroups\ReportSqlBuilder;
 
 /**
  * Order contact types the way they are used: general, delivery, invoice,

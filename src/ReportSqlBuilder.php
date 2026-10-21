@@ -8,7 +8,7 @@
 
 declare(strict_types=1);
 
-namespace Ksfraser\Frontaccounting\SalesGroups;
+namespace ksfraser\FrontAccounting\RepSalesGroups;
 
 class ReportSqlBuilder
 {
