@@ -6,7 +6,7 @@
 class hooks_ksf_FA_Rep_SalesGroups extends hooks
 {
     var $module_name = 'ksf_FA_Rep_SalesGroups';
-    var $version = '0.9.0';
+    var $version = '1.0.0';
 
     function activate_extension($company, $check_only = true)
     {

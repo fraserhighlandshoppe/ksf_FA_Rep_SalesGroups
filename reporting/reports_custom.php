@@ -67,9 +67,3 @@ $reports->addReport($sales_group_class, '_salesgroups_v2', _('Sales Group by Cus
         _('Contact Action') => 'CONTACT_ACTIONS',
         _('Comments') => 'TEXTBOX',
         _('Destination') => 'DESTINATION'));
-
-// Temporary diagnostics report - remove once the contact lookup is confirmed.
-$reports->addReport($sales_group_class, '_salesgroups_diag', _('ZZ Diagnostics'),
-    array(
-        _('Comments') => 'TEXTBOX',
-        _('Destination') => 'DESTINATION'));
